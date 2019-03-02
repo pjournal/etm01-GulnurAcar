@@ -1,6 +1,6 @@
-# Progress Journal of Gülnur Acar
+# Progress Journal of Gulnur Acar
 
-## Week 4 (Mar 3)
+## Week 3 (Mar 3)
 
 I completed my Github setup and prepared my github page.
 
