@@ -8,5 +8,5 @@ I completed my Github setup and prepared my github page.
 
 ### 3.3.2019
 
-I activated my account on Datacamp. The first step is okay.\n
+I activated my account on Datacamp. The first step is okay. \n
 I have finished the lesson 'Intro to basics'
