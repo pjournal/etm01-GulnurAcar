@@ -1,0 +1,285 @@
+# Init files----
+# 
+require(data.table)
+require(lubridate)
+# read matches info
+matches=readRDS('df9b1196-e3cf-4cc7-9159-f236fe738215_matches.rds')
+# read odds data
+odds=readRDS('df9b1196-e3cf-4cc7-9159-f236fe738215_odd_details.rds')
+
+# Data corrections----
+# delete these column
+matches$type=NULL
+matches$leagueId=NULL
+
+# fix home teams
+matches[home=='manchester-city',home:='manchester city']
+matches[home=='crystal-palace',home:='crystal palace']
+matches[home=='newcastle utd',home:='newcastle']
+matches[home=='stoke',home:='stoke city']
+matches[home=='west-ham',home:='west ham']
+matches[home %in% c('manchester-united','manchester-utd'), home:='manchester united']
+
+# fix away teams
+matches[away=='manchester-city',away:='manchester city']
+matches[away=='crystal-palace',away:='crystal palace']
+matches[away=='newcastle utd',away:='newcastle']
+matches[away=='stoke',away:='stoke city']
+matches[away=='west-ham',away:='west ham']
+matches[away %in% c('manchester-united','manchester-utd'), away:='manchester united']
+
+# remove unknown scores & postponed matches
+matches <- matches[!is.na(score)]
+matches <- matches[!score=='POSTP.']
+
+# date operations
+matches[,timestamp:=as_datetime(date,tz='Turkey')]
+matches[,date:=NULL]
+matches[,year:=year(timestamp)]
+
+# Data manipulation----
+# adding scores separately
+matches[,c('score_home','score_away'):=tstrsplit(score,':')]
+matches$score_home <- as.numeric(matches$score_home)
+matches$score_away <- as.numeric(matches$score_away)
+matches[,score:=NULL]
+
+# adding total goals for o/u
+matches[,totalgoals:=(score_home+score_away)]
+
+handicapthreshold<-2.5
+# adding result for OU and winner for 2x1 column
+matches[,result:=ifelse(totalgoals>handicapthreshold,'over',
+                        ifelse(totalgoals<handicapthreshold,'under','neither'))]
+matches[, winner:=ifelse(score_home>score_away,'home',
+                         ifelse(score_home<score_away,'away','draw'))]
+
+
+ou_odds=odds[betType=='ou' & totalhandicap == handicapthreshold]
+ou_odds[,betType:=NULL]
+ou_odds[,timestamp:=as_datetime(date,tz='Turkey')]
+ou_odds[,date:=NULL]
+ou_odds[,totalhandicap:=NULL]
+
+# bucket to discretize probabilities
+bucket=c(0:20)/20
+
+# Task 1 A-----
+for (selected_bookmaker in c('BetVictor','10Bet','bwin','bet365','Pinnacle')){
+  # filter bookmaker
+  filtered_odd=ou_odds[bookmaker==selected_bookmaker]
+
+  # take latest & initial odds
+  filtered_odd=filtered_odd[order(matchId,oddtype,timestamp)]
+  latest_odds=filtered_odd[,list(close_odd=odd[.N]),list(matchId,oddtype)]
+  initial_odds=filtered_odd[,list(open_odd=odd[1]),list(matchId,oddtype)]
+  
+  # cast over & under
+  wide_odds_latest=dcast(latest_odds,matchId~oddtype,value.var = 'close_odd')
+  wide_odds_initial=dcast(initial_odds,matchId~oddtype,value.var = 'open_odd')
+  
+  # normalized probabilities
+  wide_odds_latest[,over_prob:=(1/over)/((1/over)+(1/under))]
+  wide_odds_initial[,over_prob:=(1/over)/((1/over)+(1/under))]
+  
+  
+  # merge results and odds
+  latest_odds_with_results=merge(wide_odds_latest,
+                                 matches[,list(matchId,totalgoals,result,year)],
+                                 by=c('matchId'))
+  initial_odds_with_results=merge(wide_odds_initial,
+                                  matches[,list(matchId,totalgoals,result,year)],
+                                  by=c('matchId'))
+  
+  # over wins distribution
+  initial_odds_with_results[,discrete_over:=cut(over_prob,bucket)]
+  summary_over_initial=initial_odds_with_results[,
+                                                 list(overwins=sum(result=='over',na.rm=TRUE),.N),
+                                                 by=list(discrete_over)]
+  summary_over_initial[,ratio:=overwins/N]
+  summary_over_initial<-summary_over_initial[order(summary_over_initial$discrete_over)]
+  
+  plot(as.numeric(summary_over_initial$discrete_over)*0.05-0.025,
+       summary_over_initial$ratio,
+       col=3,
+       type = 'p',
+       main=c('OU bets of',selected_bookmaker),
+       sub='(G: Initial Bets, R: Final Bets)',
+       xlab='Bins',
+       ylab='Ratios')
+  abline(0,1)
+  
+  # over wins distribution
+  latest_odds_with_results[,discrete_over:=cut(over_prob,bucket)]
+  summary_over_latest=latest_odds_with_results[,
+                                               list(overwins=sum(result=='over',na.rm=TRUE),.N),
+                                               by=list(discrete_over)]
+  summary_over_latest[,ratio:=overwins/N]
+  summary_over_latest<-summary_over_latest[order(summary_over_latest$discrete_over)]
+  
+  lines(as.numeric(summary_over_latest$discrete_over)*0.05-0.025,
+        summary_over_latest$ratio,
+        col=2,
+        type = 'p')
+}
+
+# Task 1 B----
+all_bins <- sort(unique(latest_odds_with_results$discrete_over))
+
+for (bin in all_bins){
+  summary_bin <- latest_odds_with_results[discrete_over == bin,
+                                          list(
+                                            overwins=sum(result=='over',na.rm=TRUE),
+                                            .N,
+                                            avg_prob=mean(over_prob)),
+                                          by=list(year)]
+  summary_bin[,ratio:=overwins/N]  
+  summary_bin<-summary_bin[order(summary_bin$year)]
+  
+  plot(summary_bin$year,
+       summary_bin$ratio,
+       col=2,
+       type = 'p',
+       main=c(selected_bookmaker,"bin:",as.character(bin)),
+       sub='(R: Observations G: Estimations)',
+       xlab='Years',
+       ylab='Ratios')
+  lines(summary_bin$year,
+        summary_bin$avg_prob,
+        col=3,
+        type = 'p')
+}
+rm(list=setdiff(ls(), c("matches","odds")))
+# Task 2----
+# Calculated all odd changes comparing with the previous odds given by the selected bookmaker
+# If bookmaker decides on a change matching with the actual result of the game,
+# then gets +1 for that decision. (-1 for vice versa) (0 for if it doesn't change the odd)
+# At the end, calculated the total number of change decisions and tried to see whether the changes are for the right direction or not
+
+
+filtered_odd=odds[betType=='1x2' & bookmaker=="Pinnacle"]
+filtered_odd[,betType:=NULL]
+filtered_odd[,totalhandicap:=NULL]
+filtered_odd[,bookmaker:=NULL]
+filtered_odd=filtered_odd[order(-date,matchId)]
+filtered_odd[,timestamp:=as_datetime(date,tz='Turkey')]
+filtered_odd[,date:=NULL]
+wide=dcast(filtered_odd,matchId+timestamp~oddtype,value.var = 'odd')
+wide=wide[order(matchId,timestamp)]
+
+changes<-wide
+wide<-merge(wide,
+      matches[,list(matchId,winner,year)],
+      by=c('matchId'))
+changes=changes[1,odd1:=0]
+changes=changes[1,odd2:=0]
+changes=changes[1,oddX:=0]
+bets<-wide[1,3:5]
+
+
+for (odd_change in 2:nrow(wide)){
+  if(wide[odd_change-1,1]!=wide[odd_change,1]){
+    changes[odd_change,3:5]=0
+    bets<-wide[odd_change,3:5]
+    next
+  }
+  
+  # decision points for home odds
+  if(is.na(bets$odd1)){
+    if(!is.na(wide[odd_change,"odd1"])){
+      bets$odd1=wide[odd_change,"odd1"]
+    }
+    changes[odd_change,"odd1"]=0
+  }else{
+    if(is.na(wide[odd_change,"odd1"])){
+      changes[odd_change,"odd1"]=0
+    }else if(bets$odd1>wide[odd_change,"odd1"]){
+      
+      if(wide[odd_change,winner]=="home"){
+        changes[odd_change,"odd1"]=1
+      }else{
+        changes[odd_change,"odd1"]=-1
+      }
+      bets$odd1=wide[odd_change,"odd1"]
+    }else{
+      if(wide[odd_change,winner]=="home"){
+        changes[odd_change,"odd1"]=-1
+      }else{
+        changes[odd_change,"odd1"]=1
+      }
+      bets$odd1=wide[odd_change,"odd1"]
+    }
+  } 
+  # decision points for away odds
+  if(is.na(bets$odd2)){
+    if(!is.na(wide[odd_change,"odd2"])){
+      bets$odd2=wide[odd_change,"odd2"]
+    }
+    changes[odd_change,"odd2"]=0
+  }else{
+    if(is.na(wide[odd_change,"odd2"])){
+      changes[odd_change,"odd2"]=0
+    }else if(bets$odd2>wide[odd_change,"odd2"]){
+      
+      if(wide[odd_change,winner]=="away"){
+        changes[odd_change,"odd2"]=1
+      }else{
+        changes[odd_change,"odd2"]=-1
+      }
+      bets$odd2=wide[odd_change,"odd2"]
+    }else{
+      if(wide[odd_change,winner]=="away"){
+        changes[odd_change,"odd2"]=-1
+      }else{
+        changes[odd_change,"odd2"]=1
+      }
+      bets$odd2=wide[odd_change,"odd2"]
+    }
+  } 
+  # decision points for draw odds
+  if(is.na(bets$oddX)){
+    if(!is.na(wide[odd_change,"oddX"])){
+      bets$oddX=wide[odd_change,"oddX"]
+    }
+    changes[odd_change,"oddX"]=0
+  }else{
+    if(is.na(wide[odd_change,"oddX"])){
+      changes[odd_change,"oddX"]=0
+    }else if(bets$oddX>wide[odd_change,"oddX"]){
+      
+      if(wide[odd_change,winner]=="draw"){
+        changes[odd_change,"oddX"]=1
+      }else{
+        changes[odd_change,"oddX"]=-1
+      }
+      bets$oddX=wide[odd_change,"oddX"]
+    }else{
+      if(wide[odd_change,winner]=="draw"){
+        changes[odd_change,"oddX"]=-1
+      }else{
+        changes[odd_change,"oddX"]=1
+      }
+      bets$oddX=wide[odd_change,"oddX"]
+    }
+  } 
+}
+changes[,year:=year(timestamp)]
+summary<-changes[,list(home=sum(odd1),away=sum(odd2),draw=sum(oddX)),by=list(year)]
+summary<-summary[order(year)]
+
+plot(summary$year,
+     summary$home,
+     col=2,
+     type = 'l',
+     main='Changes for years',
+     sub='Red:Home - Green:Away - Blue:Draw',
+     xlab='Years',
+     ylab='Contribution of changes')
+lines(summary$year,
+      summary$away,
+      col=3,
+      type = 'l')
+lines(summary$year,
+      summary$draw,
+      col=4,
+      type = 'l')
