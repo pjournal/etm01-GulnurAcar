@@ -2,7 +2,7 @@
 
 ## Homework 1 - 26.03.2019
 
-[HERE] (files/Homework_1/ETM 58D Homework 1.html) is our homework 1 with Çağatay.  
+[HERE] (files/ETM 58D Homework 1.html) is our homework 1 with Çağatay.  
 
 ## Week 3 (Mar 3)
 
