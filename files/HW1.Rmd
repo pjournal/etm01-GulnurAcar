@@ -1,6 +1,6 @@
 ---
 title: "ETM 58D Homework 1"
-author: "Çaðatay Yurdasal & Gülnur Acar"
+author: "Cagatay Yurdasal & Gulnur Acar"
 date: "24 Mart 2019"
 output: html_document
 ---
