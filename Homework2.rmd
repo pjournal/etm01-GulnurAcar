@@ -1,0 +1,469 @@
+---
+title: "ETM 58D Homework 2"
+author: "Gulnur Acar & Cagatay Yurdasal"
+date: "23 Nisan 2019"
+output: html_document
+---
+
+# Task 1 
+In this part, we were supposed to understand if we can obtain significant information regarding the game outcomes using the odd data from multiple bookmakers. To examine this data, match results and the odds of some selected bookmakers. We followed the steps below;
+
+* Cleaned data inconsistencies 
+  + Strings pointing the same teams are unified
+  + The matches which have no results in data are removed
+  + The matches which are postponed are removed
+* Epoch data converted into readable timestamps
+* Scores are converted from strings to divided integers
+* Results in terms of total goals are calculated
+* 5 bookmakers are chosen; 'BetVictor', '10Bet', 'bwin', 'bet365' and 'Unibet'
+* Total handicup is set to value of 2.5
+* Final odds are selected to examine the change in success
+
+## Part A
+The principal component analysis (PCA) is performed on the data
+The below graphics are follwing; 'PCA of BetVictor', 'PCA of 10Bet', 'PCA of  bwin', 'PCA of bet365' and 'PCA of Unibet'
+
+```{r echo=FALSE,results='hide',message=FALSE,tidy=FALSE,warning=FALSE,fig.keep='all',comment=NA}
+
+# Init files----
+# 
+require(data.table)
+require(lubridate)
+require(ggplot2)
+require(ggfortify)
+require(tidyimpute)
+library(data.table)
+library(lubridate)
+library(ggplot2)
+library(ggfortify)
+library(tidyimpute)
+
+setwd("C:\\Users\\TCGACAR\\Documents\\ETM\\ETM-58D-BUSINESS ANALYTICS\\Homework 2")
+# read matches info
+matches=readRDS('df9b1196-e3cf-4cc7-9159-f236fe738215_matches.rds')
+# read odds data
+odds=readRDS('df9b1196-e3cf-4cc7-9159-f236fe738215_odd_details.rds')
+
+# Data corrections----
+# delete these column
+matches$type=NULL
+matches$leagueId=NULL
+
+# fix home teams
+matches[home=='manchester-city',home:='manchester city']
+matches[home=='crystal-palace',home:='crystal palace']
+matches[home=='newcastle utd',home:='newcastle']
+matches[home=='stoke',home:='stoke city']
+matches[home=='west-ham',home:='west ham']
+matches[home %in% c('manchester-united','manchester-utd'), home:='manchester united']
+
+# fix away teams
+matches[away=='manchester-city',away:='manchester city']
+matches[away=='crystal-palace',away:='crystal palace']
+matches[away=='newcastle utd',away:='newcastle']
+matches[away=='stoke',away:='stoke city']
+matches[away=='west-ham',away:='west ham']
+matches[away %in% c('manchester-united','manchester-utd'), away:='manchester united']
+
+# remove unknown scores & postponed matches
+matches <- matches[!is.na(score)]
+matches <- matches[!score=='POSTP.']
+
+# date operations
+matches[,timestamp:=as_datetime(date,tz='Turkey')]
+matches[,date:=NULL]
+matches[,year:=year(timestamp)]
+
+# Data manipulation----
+# adding scores separately
+matches[,c('score_home','score_away'):=tstrsplit(score,':')]
+matches$score_home <- as.numeric(matches$score_home)
+matches$score_away <- as.numeric(matches$score_away)
+matches[,score:=NULL]
+
+# adding total goals for o/u
+matches[,totalgoals:=(score_home+score_away)]
+
+# Task 1 A-----
+for (selected_bookmaker in c('BetVictor','10Bet','bwin','bet365','Unibet')){
+
+  # filter bookmaker
+filtered_odd=odds[bookmaker==selected_bookmaker]
+filtered_odd=filtered_odd[order(matchId,oddtype,date)]
+filtered_odd2=filtered_odd[betType=='ou' & totalhandicap=='2.5']
+filtered_odd3 <- filtered_odd[!betType=='ou']
+filtered_odd4=rbind(filtered_odd2, filtered_odd3)
+latest_odds=filtered_odd4[,list(close_odd=odd[.N]),list(matchId,oddtype)]
+latest_odds<-latest_odds[order(matchId,oddtype),]
+
+nn<-reshape(latest_odds,timevar="oddtype",idvar="matchId",direction="wide")
+
+# n/a data correction 
+nn[is.na(nn)] <- as.numeric(0)
+
+nn.pca <- prcomp(nn[,c(2:13)], center = TRUE,scale. = TRUE)
+summary(nn.pca)
+p=autoplot(nn.pca, colour = 'Blue', loadings=TRUE, loadings.label=TRUE  )
+#autoplot(nn.pca,loadings=TRUE, loadings.label=TRUE, which = region, stat = "reduce", color = "blue", names.expr="SYMBOL")
+print(p)
+}
+```
+ 
+There were null values in the data, these null values are changed with the value of 0 to analyze data with PCA, because of that, the result data is neared to 0 value.
+
+According to these conclusion;
+
+* For the Betvictor bookmaker;
+The oddx and odd1X are the most effective values.
+
+* For the 10bet bookmaker;
+The oddx and odd1X are the most effective values, like Betvictor bookmaker. 
+
+* For the bwin bookmaker;
+The odd1 and oddX are the most effective.
+
+* For the bet365 bookmaker;
+The oddx and odd1 are the most effective. 
+
+* For the Unibet bookmaker;
+the oddx and odd1 are the most effective value, like bet365 bookmaker. 
+
+
+## Task B
+In this part, we do MDS analysis.
+
+```{r echo=FALSE,results='hide',message=FALSE,tidy=FALSE,warning=FALSE,fig.keep='all',comment=NA}
+
+# MDS ------  task 1 b
+for (selected_bookmaker in c('BetVictor','10Bet','bwin','bet365','Unibet')){
+  # filter bookmaker
+  filtered_odd=odds[bookmaker==selected_bookmaker]
+  filtered_odd=filtered_odd[order(matchId,oddtype,date)]
+  filtered_odd2=filtered_odd[betType=='ou' & totalhandicap=='2.5']
+  filtered_odd3 <- filtered_odd[!betType=='ou']
+  filtered_odd4=rbind(filtered_odd2, filtered_odd3)
+  latest_odds=filtered_odd4[,list(close_odd=odd[.N]),list(matchId,oddtype)]
+  latest_odds<-latest_odds[order(matchId,oddtype),]
+  
+  nn<-reshape(latest_odds,timevar="oddtype",idvar="matchId",direction="wide")
+  nn[is.na(nn)] <- as.numeric(0)
+  
+  nn2<- nn[,c(12:13)]
+  d <- dist(nn2) # euclidean distances between the rows
+  fit <- cmdscale(d,eig=TRUE, k=2) # k is the number of dim
+  fit # view results
+  
+  # plot solution 
+  x <- fit$points[,1]
+  y <- fit$points[,2]
+  plot(x, y, xlab="Coordinate 1", ylab="Coordinate 2", 
+       main=c("Metric MDS of",selected_bookmaker), type="n")
+  text(x, y, labels = row.names(nn), cex=.7)
+}
+```
+
+## Part 3
+
+PCA analysis shows how effective and to what extent vectors affect the result, while MDS analysis shows the interaction between two vectors with the highest contribution.
+These two analyzes are the analyzes that can be selected according to our purpose. Pca eigenvectors by selecting what factor to use allows you to choose. MDS shows the magnitude of the values.
+
+
+
+# Task 2 
+
+In this part of the homework 2, the logistic regression model is builded to predict if a game ends as over or under. 
+
+For this purpose, We followed the steps below;
+
+* The data of feature_extraciton and data_preprocessing corrected and  prepared to prediction.
+* The date of testStart and trainStart are determined.
+* Threshold is set to 0.01 value.
+* Null values in data have been eliminated
+
+```{r echo=FALSE,results='hide',message=FALSE,tidy=FALSE,warning=FALSE,fig.keep='all',comment=NA}
+
+
+#INSTALL PACKAGES AND PREPARE FOR USING
+require(TunePareto)
+library(TunePareto)
+
+require(data.table)
+library(data.table)
+
+require(glmnet)
+library(glmnet)
+
+require(lubridate)
+library(lubridate)
+
+require(ROCR)
+library(ROCR)
+
+#SET TO WORKING FOLDER
+setwd("C:\\Users\\TCGACAR\\Documents\\ETM\\ETM-58D-BUSINESS ANALYTICS\\Homework 2")
+
+
+#THE INITIALS
+
+testStart=as.Date('2018-11-16')
+trainStart=as.Date('2012-07-15')
+rem_miss_threshold=0.01 #parameter for removing bookmaker odds with missing ratio greater than this threshold
+
+
+#UPDATED THE SOURCES DEPEND ON OVER/UNDER BET TYPE
+
+source('data_preprocessing.r')
+source('feature_extraction.r')
+source('performance_metrics.r')
+source('train_models.r')
+
+
+# SET THE DATA PATHS
+
+matches_data_path="C:\\Users\\TCGACAR\\Documents\\ETM\\ETM-58D-BUSINESS ANALYTICS\\Homework 2\\df9b1196-e3cf-4cc7-9159-f236fe738215_matches.rds"
+odd_details_data_path="C:\\Users\\TCGACAR\\Documents\\ETM\\ETM-58D-BUSINESS ANALYTICS\\Homework 2\\df9b1196-e3cf-4cc7-9159-f236fe738215_odd_details.rds"
+
+# READ DATA
+
+matches_raw=readRDS(matches_data_path)
+odd_details_raw=readRDS(odd_details_data_path)
+
+
+# PREPROCESS MATCHES & ODDS 
+matches=matches_data_preprocessing(matches_raw)
+odd_details=details_data_preprocessing(odd_details_raw,matches)
+
+# extract open and close odd type features from multiple bookmakers
+features=extract_features.openclose(matches,odd_details,pMissThreshold=rem_miss_threshold,trainStart,testStart)
+
+# divide data based on the provided dates 
+train_features=features[Match_Date>=trainStart & Match_Date<testStart] 
+test_features=features[Match_Date>=testStart] 
+
+# run glmnet on train data with tuning lambda parameter based on RPS and return predictions based on lambda with minimum RPS
+str(train_features)
+train_features <- train_features[,-(1:4)]   
+
+# DATA CORRECTION
+
+test_features <- test_features[!is.na(Result_Total)]
+
+# MODELLING
+
+model=glm(Result_Total~.,data=train_features,family="binomial")
+summary(model)
+p=predict(model, newdata = test_features,type = "response")
+pr <- prediction(p, as.numeric(test_features$Result_Total))
+# TPR = sensitivity, FPR=specificity
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf)
+
+```
+
+# Appendix
+## r code
+```
+TASK 1 
+
+# Init files----
+# 
+require(data.table)
+require(lubridate)
+require(ggplot2)
+require(ggfortify)
+require(tidyimpute)
+library(data.table)
+library(lubridate)
+library(ggplot2)
+library(ggfortify)
+library(tidyimpute)
+
+
+setwd("C:\\Users\\TCGACAR\\Documents\\ETM\\ETM-58D-BUSINESS ANALYTICS\\Homework 2")
+# read matches info
+matches=readRDS('df9b1196-e3cf-4cc7-9159-f236fe738215_matches.rds')
+# read odds data
+odds=readRDS('df9b1196-e3cf-4cc7-9159-f236fe738215_odd_details.rds')
+
+# Data corrections----
+# delete these column
+matches$type=NULL
+matches$leagueId=NULL
+
+# fix home teams
+matches[home=='manchester-city',home:='manchester city']
+matches[home=='crystal-palace',home:='crystal palace']
+matches[home=='newcastle utd',home:='newcastle']
+matches[home=='stoke',home:='stoke city']
+matches[home=='west-ham',home:='west ham']
+matches[home %in% c('manchester-united','manchester-utd'), home:='manchester united']
+
+# fix away teams
+matches[away=='manchester-city',away:='manchester city']
+matches[away=='crystal-palace',away:='crystal palace']
+matches[away=='newcastle utd',away:='newcastle']
+matches[away=='stoke',away:='stoke city']
+matches[away=='west-ham',away:='west ham']
+matches[away %in% c('manchester-united','manchester-utd'), away:='manchester united']
+
+# remove unknown scores & postponed matches
+matches <- matches[!is.na(score)]
+matches <- matches[!score=='POSTP.']
+
+# date operations
+matches[,timestamp:=as_datetime(date,tz='Turkey')]
+matches[,date:=NULL]
+matches[,year:=year(timestamp)]
+
+# Data manipulation----
+# adding scores separately
+matches[,c('score_home','score_away'):=tstrsplit(score,':')]
+matches$score_home <- as.numeric(matches$score_home)
+matches$score_away <- as.numeric(matches$score_away)
+matches[,score:=NULL]
+
+# adding total goals for o/u
+matches[,totalgoals:=(score_home+score_away)]
+
+
+# Task 1 A-----
+for (selected_bookmaker in c('BetVictor','10Bet','bwin','bet365','Unibet')){
+# filter bookmaker
+filtered_odd=odds[bookmaker==selected_bookmaker]
+#filtered_odd=odds[bookmaker=='Unibet']
+
+filtered_odd=filtered_odd[order(matchId,oddtype,date)]
+filtered_odd2=filtered_odd[betType=='ou' & totalhandicap=='2.5']
+filtered_odd3 <- filtered_odd[!betType=='ou']
+filtered_odd4=rbind(filtered_odd2, filtered_odd3)
+latest_odds=filtered_odd4[,list(close_odd=odd[.N]),list(matchId,oddtype)]
+latest_odds<-latest_odds[order(matchId,oddtype),]
+
+nn<-reshape(latest_odds,timevar="oddtype",idvar="matchId",direction="wide")
+
+# n/a data correction 
+nn[is.na(nn)] <- as.numeric(0)
+
+nn.pca <- prcomp(nn[,c(2:13)], center = TRUE,scale. = TRUE)
+summary(nn.pca)
+p=autoplot(nn.pca, colour = 'Blue', loadings=TRUE, loadings.label=TRUE  )
+#autoplot(nn.pca,loadings=TRUE, loadings.label=TRUE, which = region, stat = "reduce", color = "blue", names.expr="SYMBOL")
+print(p)
+}
+
+
+# MDS ------  task 1 b
+for (selected_bookmaker in c('BetVictor','10Bet','bwin','bet365','Unibet')){
+  # filter bookmaker
+  filtered_odd=odds[bookmaker==selected_bookmaker]
+  filtered_odd=filtered_odd[order(matchId,oddtype,date)]
+  filtered_odd2=filtered_odd[betType=='ou' & totalhandicap=='2.5']
+  filtered_odd3 <- filtered_odd[!betType=='ou']
+  filtered_odd4=rbind(filtered_odd2, filtered_odd3)
+  latest_odds=filtered_odd4[,list(close_odd=odd[.N]),list(matchId,oddtype)]
+  latest_odds<-latest_odds[order(matchId,oddtype),]
+  
+  nn<-reshape(latest_odds,timevar="oddtype",idvar="matchId",direction="wide")
+  nn[is.na(nn)] <- as.numeric(0)
+  
+  nn2<- nn[,c(12:13)]
+  d <- dist(nn2) # euclidean distances between the rows
+  fit <- cmdscale(d,eig=TRUE, k=2) # k is the number of dim
+  fit # view results
+  
+  # plot solution 
+  x <- fit$points[,1]
+  y <- fit$points[,2]
+  plot(x, y, xlab="Coordinate 1", ylab="Coordinate 2", 
+       main=c("Metric MDS of",selected_bookmaker), type="n")
+  text(x, y, labels = row.names(nn), cex=.7)
+}
+
+TASK 2
+
+#INSTALL PACKAGES AND PREPARE FOR USING
+
+install.packages("TunePareto")
+install.packages("data.table")
+install.packages("glmnet")
+install.packages("lubridate")
+install.packages("ROCR")
+
+require(tunePareto)
+library(TunePareto)
+
+require(data.table)
+library(data.table)
+
+require(glmnet)
+library(glmnet)
+
+require(lubridate)
+library(lubridate)
+
+require(ROCR)
+library(ROCR)
+
+#SET TO WORKING FOLDER
+setwd("C:\\Users\\TCGACAR\\Documents\\ETM\\ETM-58D-BUSINESS ANALYTICS\\Homework 2")
+
+
+#THE INITIALS
+
+testStart=as.Date('2018-11-16')
+trainStart=as.Date('2012-07-15')
+rem_miss_threshold=0.01 #parameter for removing bookmaker odds with missing ratio greater than this threshold
+
+
+#UPDATED THE SOURCES DEPEND ON OVER/UNDER BET TYPE
+
+source('data_preprocessing.r')
+source('feature_extraction.r')
+source('performance_metrics.r')
+source('train_models.r')
+
+
+# SET THE DATA PATHS
+
+matches_data_path="C:\\Users\\TCGACAR\\Documents\\ETM\\ETM-58D-BUSINESS ANALYTICS\\Homework 2\\df9b1196-e3cf-4cc7-9159-f236fe738215_matches.rds"
+odd_details_data_path="C:\\Users\\TCGACAR\\Documents\\ETM\\ETM-58D-BUSINESS ANALYTICS\\Homework 2\\df9b1196-e3cf-4cc7-9159-f236fe738215_odd_details.rds"
+
+# READ DATA
+
+matches_raw=readRDS(matches_data_path)
+odd_details_raw=readRDS(odd_details_data_path)
+
+
+# PREPROCESS MATCHES & ODDS 
+matches=matches_data_preprocessing(matches_raw)
+odd_details=details_data_preprocessing(odd_details_raw,matches)
+
+# extract open and close odd type features from multiple bookmakers
+features=extract_features.openclose(matches,odd_details,pMissThreshold=rem_miss_threshold,trainStart,testStart)
+
+# divide data based on the provided dates 
+train_features=features[Match_Date>=trainStart & Match_Date<testStart] 
+test_features=features[Match_Date>=testStart] 
+
+# run glmnet on train data with tuning lambda parameter based on RPS and return predictions based on lambda with minimum RPS
+str(train_features)
+train_features <- train_features[,-(1:4)]   
+
+# DATA CORRECTION
+
+test_features <- test_features[!is.na(Result_Total)]
+
+# MODELLING
+
+model=glm(Result_Total~.,data=train_features,family="binomial")
+summary(model)
+p=predict(model, newdata = test_features,type = "response")
+pr <- prediction(p, as.numeric(test_features$Result_Total))
+# TPR = sensitivity, FPR=specificity
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf)
+
+
+
+
+```
