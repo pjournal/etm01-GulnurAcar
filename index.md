@@ -1,5 +1,10 @@
 # Progress Journal of Gulnur Acar
 
+## Homework 2 - 23.04.2019
+
+[Here](Homework2.html) is our homework 1 with Çağatay.  
+
+
 ## Homework 1 - 26.03.2019
 
 [Here](files/ETM 58D Homework 1.html) is our homework 1 with Çağatay.  
