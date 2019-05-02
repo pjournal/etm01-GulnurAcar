@@ -2,7 +2,7 @@
 
 ## Homework 2 - 23.04.2019
 
-[Here](Homework2.html) is our homework 1 with Çağatay.  
+[Here](Homework2.html) is our homework 2 with Çağatay.  
 
 
 ## Homework 1 - 26.03.2019
