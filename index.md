@@ -1,5 +1,10 @@
 # Progress Journal of Gulnur Acar
 
+## Homework 3 - 09.05.2019
+
+[Here](https://pjournal.github.io/etm01-cagatay-yurdasal/files/Homework_3/Homework3.html) is our homework 3 with Çağatay.
+
+
 ## Homework 2 - 23.04.2019
 
 [Here](Homework2.html) is our homework 2 with Çağatay.  
